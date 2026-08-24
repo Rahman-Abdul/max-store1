@@ -131,6 +131,10 @@ model Product {
   description       String?
   image             String?
   costPrice         Decimal          @db.Decimal(15, 2)
+  wholesalePrice    Decimal?         @db.Decimal(15, 2)
+  retailPrice       Decimal?         @db.Decimal(15, 2)
+  manufacturingDate DateTime?
+  expiryDate        DateTime?
   stockQuantity     Int              @default(0)
   lowStockThreshold Int              @default(10)
   isActive          Boolean          @default(true)

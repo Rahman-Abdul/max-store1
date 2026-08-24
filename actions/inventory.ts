@@ -7,7 +7,10 @@ import { revalidatePath } from "next/cache";
 
 export async function createProduct(data: {
   name: string; sku: string; barcode?: string; description?: string;
-  costPrice: number; stockQuantity: number; lowStockThreshold: number;
+  costPrice: number; wholesalePrice?: number; retailPrice?: number;
+  manufacturingDate?: Date; expiryDate?: Date;
+  unit?: "GRAM" | "PIECES" | "BAG" | "CUPS" | "CONGO";
+  stockQuantity: number; lowStockThreshold: number;
   categoryId?: string; categoryName?: string; parentCategoryId?: string;
   supplierId?: string; supplierName?: string;
   shopId: string; image?: string;
@@ -58,18 +61,18 @@ export async function createProduct(data: {
     }
   }
 
-  // Resolve supplier
+  // Resolve supplier (scoped to this shop so it's fetchable by /api/suppliers?shopId=)
   let resolvedSupplierId = data.supplierId;
   if (!resolvedSupplierId && data.supplierName?.trim()) {
     const supName = data.supplierName.trim();
     const existingSup = await prisma.supplier.findFirst({
-      where: { name: { equals: supName, mode: "insensitive" } },
+      where: { name: { equals: supName, mode: "insensitive" }, shopId: data.shopId },
     });
     if (existingSup) {
       resolvedSupplierId = existingSup.id;
     } else {
       const created = await prisma.supplier.create({
-        data: { name: supName },
+        data: { name: supName, shopId: data.shopId },
       });
       resolvedSupplierId = created.id;
     }
@@ -79,6 +82,8 @@ export async function createProduct(data: {
     const createData: any = {
       name: data.name, sku: data.sku, barcode: data.barcode,
       description: data.description, costPrice: data.costPrice,
+      wholesalePrice: data.wholesalePrice, retailPrice: data.retailPrice,
+      manufacturingDate: data.manufacturingDate, expiryDate: data.expiryDate,
       stockQuantity: data.stockQuantity, lowStockThreshold: data.lowStockThreshold,
       categoryId: resolvedCategoryId, supplierId: resolvedSupplierId,
       shopId: data.shopId, image: data.image,
@@ -106,6 +111,8 @@ export async function createProduct(data: {
 
 export async function updateProduct(productId: string, data: {
   name?: string; barcode?: string; description?: string; costPrice?: number;
+  wholesalePrice?: number; retailPrice?: number;
+  manufacturingDate?: Date; expiryDate?: Date;
   lowStockThreshold?: number; categoryId?: string; categoryName?: string;
   parentCategoryName?: string;
   supplierId?: string; supplierName?: string;
@@ -171,15 +178,15 @@ export async function updateProduct(productId: string, data: {
     }
   }
 
-  // Resolve supplier
+  // Resolve supplier (scoped to this shop so it's fetchable by /api/suppliers?shopId=)
   let resolvedSupplierId = data.supplierId;
   if (!resolvedSupplierId && data.supplierName?.trim()) {
     const supName = data.supplierName.trim();
     const existing = await prisma.supplier.findFirst({
-      where: { name: { equals: supName, mode: "insensitive" } },
+      where: { name: { equals: supName, mode: "insensitive" }, shopId: product.shopId },
     });
     resolvedSupplierId = existing?.id || (await prisma.supplier.create({
-      data: { name: supName },
+      data: { name: supName, shopId: product.shopId },
     })).id;
   }
 

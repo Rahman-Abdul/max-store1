@@ -4,7 +4,7 @@ import { useState } from "react";
 import { createProduct } from "@/actions/inventory";
 import { toast } from "sonner";
 import { X, Loader2, Package } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CategorySupplierCombobox } from "@/components/forms/category-supplier-combobox";
 
 interface Props {
@@ -16,6 +16,8 @@ interface Props {
 }
 
 export function ProductFormModal({ shopId: initialShopId, onClose, onSuccess, product, isRSA }: Props) {
+  const queryClient = useQueryClient();
+
   const [loading, setLoading]               = useState(false);
   const [selectedShopId, setSelectedShopId] = useState(initialShopId || "");
   const [categoryInput, setCategoryInput]   = useState(product?.category?.name || "");
@@ -23,13 +25,17 @@ export function ProductFormModal({ shopId: initialShopId, onClose, onSuccess, pr
   const [supplierInput, setSupplierInput]   = useState(product?.supplier?.name || "");
 
   const [form, setForm] = useState({
-    name:              product?.name              || "",
-    sku:               product?.sku               || "",
-    barcode:           product?.barcode            || "",
-    description:       product?.description        || "",
-    costPrice:         product ? String(product.costPrice) : "",
-    stockQuantity:     product ? String(product.stockQuantity) : "0",
-    lowStockThreshold: product ? String(product.lowStockThreshold) : "10",
+    name:               product?.name               || "",
+    sku:                product?.sku                || "",
+    barcode:            product?.barcode             || "",
+    description:        product?.description         || "",
+    costPrice:          product ? String(product.costPrice) : "",
+    wholesalePrice:     product?.wholesalePrice != null ? String(product.wholesalePrice) : "",
+    retailPrice:        product?.retailPrice != null ? String(product.retailPrice) : "",
+    manufacturingDate:  product?.manufacturingDate ? String(product.manufacturingDate).slice(0, 10) : "",
+    expiryDate:         product?.expiryDate ? String(product.expiryDate).slice(0, 10) : "",
+    stockQuantity:      product ? String(product.stockQuantity) : "0",
+    lowStockThreshold:  product ? String(product.lowStockThreshold) : "10",
   });
 
   const shopIdToUse = selectedShopId || initialShopId || "";
@@ -51,12 +57,10 @@ export function ProductFormModal({ shopId: initialShopId, onClose, onSuccess, pr
   });
   const allCategories: any[] = catsData?.data || [];
 
-  // Find the selected category object (to know its id for sub-category lookup)
   const selectedCategory = allCategories.find(
     c => c.name.toLowerCase() === categoryInput.trim().toLowerCase()
   );
 
-  // Load sub-categories of the selected category
   const { data: subCatsData } = useQuery({
     queryKey: ["subcategories-combobox", selectedCategory?.id],
     queryFn: () =>
@@ -66,7 +70,6 @@ export function ProductFormModal({ shopId: initialShopId, onClose, onSuccess, pr
   });
   const subCategories: any[] = subCatsData?.data || [];
 
-  // Show sub-category field only when a known category is selected
   const showSubCategory = !!selectedCategory;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -83,27 +86,36 @@ export function ProductFormModal({ shopId: initialShopId, onClose, onSuccess, pr
 
     setLoading(true);
     try {
-      // Resolve which category name to use:
-      // If sub-category is filled → use sub-category (it will be created under parent)
-      // Otherwise → use the main category
       const finalCategoryName = subCategoryInput.trim() || categoryInput.trim();
       const parentCategoryId  = subCategoryInput.trim() ? selectedCategory?.id : undefined;
 
       await createProduct({
-        name:              form.name,
-        sku:               form.sku,
-        barcode:           form.barcode || undefined,
-        description:       form.description || undefined,
-        costPrice:         parseFloat(form.costPrice),
-        stockQuantity:     parseInt(form.stockQuantity) || 0,
-        lowStockThreshold: parseInt(form.lowStockThreshold) || 10,
-        categoryName:      finalCategoryName,
+        name:               form.name,
+        sku:                form.sku,
+        barcode:            form.barcode || undefined,
+        description:        form.description || undefined,
+        costPrice:          parseFloat(form.costPrice),
+        wholesalePrice:     form.wholesalePrice ? parseFloat(form.wholesalePrice) : undefined,
+        retailPrice:        form.retailPrice ? parseFloat(form.retailPrice) : undefined,
+        manufacturingDate:  form.manufacturingDate ? new Date(form.manufacturingDate) : undefined,
+        expiryDate:         form.expiryDate ? new Date(form.expiryDate) : undefined,
+        stockQuantity:      parseInt(form.stockQuantity) || 0,
+        lowStockThreshold:  parseInt(form.lowStockThreshold) || 10,
+        categoryName:       finalCategoryName,
         parentCategoryId,
-        supplierName:      supplierInput.trim() || undefined,
-        shopId:            shopIdToUse,
+        supplierName:       supplierInput.trim() || undefined,
+        shopId:             shopIdToUse,
       });
 
       toast.success(`Product "${form.name}" created`);
+
+      // Refresh cached lookups so a freshly-created supplier/category
+      // shows up immediately the next time this modal is opened.
+      queryClient.invalidateQueries({ queryKey: ["categories-combobox"] });
+      queryClient.invalidateQueries({ queryKey: ["subcategories-combobox"] });
+      queryClient.invalidateQueries({ queryKey: ["suppliers-combobox"] });
+      queryClient.invalidateQueries({ queryKey: ["suppliers"] });
+
       onSuccess();
     } catch (err: any) {
       toast.error(err.message || "Failed to create product");
@@ -123,6 +135,8 @@ export function ProductFormModal({ shopId: initialShopId, onClose, onSuccess, pr
         onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
         placeholder={opts.placeholder || ""}
         required={opts.required}
+        min={opts.type === "number" ? "0" : undefined}
+        step={opts.type === "number" ? "0.01" : undefined}
         className="form-input w-full"
       />
     </div>
@@ -162,6 +176,19 @@ export function ProductFormModal({ shopId: initialShopId, onClose, onSuccess, pr
             {field("Barcode",          "barcode",   { placeholder: "Optional" })}
             {field("Cost Price (₦) *", "costPrice", { type: "number", required: true, placeholder: "0.00" })}
           </div>
+
+          {/* ── Pricing (new) ── */}
+          <div className="grid grid-cols-2 gap-3">
+            {field("Wholesale Price (₦)", "wholesalePrice", { type: "number", placeholder: "0.00" })}
+            {field("Retail Price (₦)",    "retailPrice",    { type: "number", placeholder: "0.00" })}
+          </div>
+
+          {/* ── Dates (new) ── */}
+          <div className="grid grid-cols-2 gap-3">
+            {field("Manufacturing Date", "manufacturingDate", { type: "date" })}
+            {field("Expiry Date",        "expiryDate",        { type: "date" })}
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             {field("Opening Stock Qty",   "stockQuantity",     { type: "number", placeholder: "0" })}
             {field("Low Stock Threshold", "lowStockThreshold", { type: "number", placeholder: "10" })}
@@ -178,7 +205,7 @@ export function ProductFormModal({ shopId: initialShopId, onClose, onSuccess, pr
               value={categoryInput}
               onChange={val => {
                 setCategoryInput(val);
-                setSubCategoryInput(""); // reset sub when parent changes
+                setSubCategoryInput("");
               }}
               placeholder="Type or pick a category…"
               required
