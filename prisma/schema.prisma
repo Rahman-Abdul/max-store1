@@ -1,0 +1,752 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id               String           @id @default(cuid())
+  name             String
+  email            String           @unique
+  username         String           @unique
+  password         String
+  role             UserRole         @default(CASHIER)
+  status           UserStatus       @default(ACTIVE)
+  avatar           String?
+  phone            String?
+  lastLoginAt      DateTime?
+  lastLoginIp      String?
+  failedLoginCount Int              @default(0)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  createdBy        String?
+  activityLogs     ActivityLog[]
+  auditLogs        AuditLog[]       @relation("AuditByUser")
+  damagedProducts  DamagedProduct[]
+  expenseApprovals Expense[]        @relation("ExpenseApprovedBy")
+  expenses         Expense[]        @relation("ExpenseCreatedBy")
+  inventoryLogs    InventoryLog[]
+  notifications    Notification[]
+  refundApprovals  Refund[]         @relation("RefundApprovedBy")
+  refunds          Refund[]         @relation("RefundByUser")
+  repairsAsCashier Repair[]         @relation("RepairCashier")
+  repairsAsStaff   Repair[]         @relation("RepairByStaff")
+  cashierSales     Sale[]           @relation("SaleConfirmedBy")
+  sales            Sale[]           @relation("SaleByStaff")
+  sessions         Session[]
+  shopAssignments  UserShop[]
+  createdByUser    User?            @relation("UserCreatedBy", fields: [createdBy], references: [id])
+  createdUsers     User[]           @relation("UserCreatedBy")
+  createdProducts  Product[]        @relation("ProductCreatedBy")
+
+  @@map("users")
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  userId     String
+  token      String   @unique
+  ipAddress  String?
+  userAgent  String?
+  deviceInfo String?
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model Shop {
+  id              String           @id @default(cuid())
+  name            String
+  slug            String           @unique
+  description     String?
+  logo            String?
+  address         String?
+  phone           String?
+  email           String?
+  website         String?
+  currency        String           @default("NGN")
+  status          ShopStatus       @default(ACTIVE)
+  plan            String           @default("basic")
+  planExpiresAt   DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  aiInsights      AIInsight[]
+  categories      Category[]
+  closingReports  ClosingReport[]
+  customers       Customer[]
+  damagedProducts DamagedProduct[]
+  expenses        Expense[]
+  inventoryLogs   InventoryLog[]
+  notifications   Notification[]
+  products        Product[]
+  repairs         Repair[]
+  sales           Sale[]
+  users           UserShop[]
+  suppliers       Supplier[]
+
+  @@map("shops")
+}
+
+model UserShop {
+  id     String @id @default(cuid())
+  userId String
+  shopId String
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, shopId])
+  @@map("user_shops")
+}
+
+model Category {
+  id          String     @id @default(cuid())
+  name        String
+  slug        String
+  description String?
+  image       String?
+  parentId    String?
+  shopId      String
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  parent      Category?  @relation("CategoryChildren", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryChildren")
+  shop        Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  products    Product[]
+
+  @@unique([slug, shopId])
+  @@map("categories")
+}
+
+model Product {
+  id                String           @id @default(cuid())
+  name              String
+  sku               String
+  barcode           String?
+  description       String?
+  image             String?
+  costPrice         Decimal          @db.Decimal(15, 2)
+  stockQuantity     Int              @default(0)
+  lowStockThreshold Int              @default(10)
+  isActive          Boolean          @default(true)
+  shopId            String
+  categoryId        String?
+  supplierId        String?
+  createdById       String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  damagedProducts   DamagedProduct[]
+  inventoryLogs     InventoryLog[]
+  category          Category?        @relation(fields: [categoryId], references: [id])
+  shop              Shop             @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  supplier          Supplier?        @relation(fields: [supplierId], references: [id])
+  createdBy         User?            @relation("ProductCreatedBy", fields: [createdById], references: [id])
+  repairParts       RepairPart[]
+  restockHistory    RestockHistory[]
+  returnItems       ReturnItem[]
+  saleItems         SaleItem[]
+
+  @@unique([sku, shopId])
+  @@map("products")
+}
+
+model Supplier {
+  id          String    @id @default(cuid())
+  name        String
+  email       String?
+  phone       String?
+  address     String?
+  contactName String?
+  shopId      String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  shop        Shop?     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  products    Product[]
+
+  @@map("suppliers")
+}
+
+model Customer {
+  id           String        @id @default(cuid())
+  name         String
+  email        String?
+  phone        String?
+  address      String?
+  buyerType    BuyerType     @default(REGULAR_BUYER)
+  debtBalance  Decimal       @default(0) @db.Decimal(15, 2)
+  creditLimit  Decimal       @default(0) @db.Decimal(15, 2)
+  shopId       String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  shop         Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  debtPayments DebtPayment[]
+  debts        Debt[]
+  sales        Sale[]
+
+  @@map("customers")
+}
+
+model Sale {
+  id            String        @id @default(cuid())
+  orderCode     String        @unique
+  shopId        String
+  staffId       String
+  cashierId     String?
+  customerId    String?
+  customerName  String?
+  engineerName  String?
+  buyerType     BuyerType     @default(REGULAR_BUYER)
+  status        SaleStatus    @default(PENDING)
+  subtotal      Decimal       @db.Decimal(15, 2)
+  totalCost     Decimal       @db.Decimal(15, 2)
+  totalProfit   Decimal       @db.Decimal(15, 2)
+  discount      Decimal       @default(0) @db.Decimal(15, 2)
+  totalAmount   Decimal       @db.Decimal(15, 2)
+  amountPaid    Decimal       @default(0) @db.Decimal(15, 2)
+  balanceDue    Decimal       @default(0) @db.Decimal(15, 2)
+  paymentMethod PaymentMethod @default(CASH)
+  paymentStatus PaymentStatus @default(PENDING)
+  notes         String?
+  currency      String        @default("NGN")
+  exchangeRate  Decimal       @default(1) @db.Decimal(15, 6)
+  confirmedAt   DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  debts         Debt[]
+  payments      Payment[]
+  swaps         ProductSwap[]
+  receipt       Receipt?
+  refunds       Refund[]
+  repair        Repair?
+  returns       Return[]
+  items         SaleItem[]
+  cashier       User?         @relation("SaleConfirmedBy", fields: [cashierId], references: [id])
+  customer      Customer?     @relation(fields: [customerId], references: [id])
+  shop          Shop          @relation(fields: [shopId], references: [id])
+  staff         User          @relation("SaleByStaff", fields: [staffId], references: [id])
+  whatsappLogs  WhatsAppLog[]
+
+  @@map("sales")
+}
+
+model SaleItem {
+  id           String  @id @default(cuid())
+  saleId       String
+  productId    String
+  productName  String
+  productSku   String
+  quantity     Int
+  costPrice    Decimal @db.Decimal(15, 2)
+  sellingPrice Decimal @db.Decimal(15, 2)
+  totalCost    Decimal @db.Decimal(15, 2)
+  totalAmount  Decimal @db.Decimal(15, 2)
+  profit       Decimal @db.Decimal(15, 2)
+  product      Product @relation(fields: [productId], references: [id])
+  sale         Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@map("sale_items")
+}
+
+model Payment {
+  id          String        @id @default(cuid())
+  saleId      String
+  method      PaymentMethod
+  amount      Decimal       @db.Decimal(15, 2)
+  reference   String?
+  status      PaymentStatus @default(COMPLETED)
+  notes       String?
+  processedAt DateTime      @default(now())
+  createdAt   DateTime      @default(now())
+  sale        Sale          @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+}
+
+model Receipt {
+  id         String    @id @default(cuid())
+  saleId     String    @unique
+  receiptNo  String    @unique
+  qrCode     String?
+  barcode    String?
+  printedAt  DateTime?
+  emailedAt  DateTime?
+  whatsappAt DateTime?
+  createdAt  DateTime  @default(now())
+  sale       Sale      @relation(fields: [saleId], references: [id])
+
+  @@map("receipts")
+}
+
+model Refund {
+  id            String         @id @default(cuid())
+  saleId        String
+  requestedById String
+  approvedById  String?
+  amount        Decimal        @db.Decimal(15, 2)
+  reason        String
+  status        RefundStatus   @default(PENDING)
+  refundMethod  PaymentMethod?
+  notes         String?
+  approvedAt    DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  approvedBy    User?          @relation("RefundApprovedBy", fields: [approvedById], references: [id])
+  requestedBy   User           @relation("RefundByUser", fields: [requestedById], references: [id])
+  sale          Sale           @relation(fields: [saleId], references: [id])
+
+  @@map("refunds")
+}
+
+model Return {
+  id        String       @id @default(cuid())
+  saleId    String
+  reason    String
+  status    ReturnStatus @default(PENDING)
+  notes     String?
+  restocked Boolean      @default(false)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  items     ReturnItem[]
+  sale      Sale         @relation(fields: [saleId], references: [id])
+
+  @@map("returns")
+}
+
+model ReturnItem {
+  id        String  @id @default(cuid())
+  returnId  String
+  productId String
+  quantity  Int
+  reason    String?
+  product   Product @relation(fields: [productId], references: [id])
+  return    Return  @relation(fields: [returnId], references: [id], onDelete: Cascade)
+
+  @@map("return_items")
+}
+
+model ProductSwap {
+  id                String   @id @default(cuid())
+  saleId            String
+  originalProductId String
+  newProductId      String
+  quantityReturned  Int
+  quantityGiven     Int
+  priceDifference   Decimal  @db.Decimal(15, 2)
+  extraPayment      Decimal  @default(0) @db.Decimal(15, 2)
+  refundAmount      Decimal  @default(0) @db.Decimal(15, 2)
+  reason            String?
+  notes             String?
+  createdAt         DateTime @default(now())
+  sale              Sale     @relation(fields: [saleId], references: [id])
+
+  @@map("product_swaps")
+}
+
+model DamagedProduct {
+  id           String     @id @default(cuid())
+  productId    String
+  shopId       String
+  reportedById String
+  quantity     Int
+  damageType   DamageType @default(OTHER)
+  reason       String
+  notes        String?
+  supplierId   String?
+  costLoss     Decimal    @db.Decimal(15, 2)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  product      Product    @relation(fields: [productId], references: [id])
+  reportedBy   User       @relation(fields: [reportedById], references: [id])
+  shop         Shop       @relation(fields: [shopId], references: [id])
+
+  @@map("damaged_products")
+}
+
+model Debt {
+  id         String        @id @default(cuid())
+  customerId String
+  saleId     String?
+  amount     Decimal       @db.Decimal(15, 2)
+  balance    Decimal       @db.Decimal(15, 2)
+  dueDate    DateTime?
+  isPaid     Boolean       @default(false)
+  notes      String?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  payments   DebtPayment[]
+  customer   Customer      @relation(fields: [customerId], references: [id])
+  sale       Sale?         @relation(fields: [saleId], references: [id])
+
+  @@map("debts")
+}
+
+model DebtPayment {
+  id         String        @id @default(cuid())
+  debtId     String
+  customerId String
+  amount     Decimal       @db.Decimal(15, 2)
+  method     PaymentMethod @default(CASH)
+  reference  String?
+  notes      String?
+  paidAt     DateTime      @default(now())
+  customer   Customer      @relation(fields: [customerId], references: [id])
+  debt       Debt          @relation(fields: [debtId], references: [id])
+
+  @@map("debt_payments")
+}
+
+model ExpenseCategory {
+  id       String    @id @default(cuid())
+  name     String    @unique
+  icon     String?
+  expenses Expense[]
+
+  @@map("expense_categories")
+}
+
+model Expense {
+  id           String          @id @default(cuid())
+  shopId       String
+  categoryId   String
+  createdById  String
+  approvedById String?
+  title        String
+  description  String?
+  amount       Decimal         @db.Decimal(15, 2)
+  status       ExpenseStatus   @default(PENDING)
+  receipt      String?
+  expenseDate  DateTime        @default(now())
+  approvedAt   DateTime?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  approvedBy   User?           @relation("ExpenseApprovedBy", fields: [approvedById], references: [id])
+  category     ExpenseCategory @relation(fields: [categoryId], references: [id])
+  createdBy    User            @relation("ExpenseCreatedBy", fields: [createdById], references: [id])
+  shop         Shop            @relation(fields: [shopId], references: [id])
+
+  @@map("expenses")
+}
+
+model InventoryLog {
+  id             String   @id @default(cuid())
+  productId      String
+  shopId         String
+  userId         String?
+  type           String
+  quantityBefore Int
+  quantityChange Int
+  quantityAfter  Int
+  reference      String?
+  notes          String?
+  createdAt      DateTime @default(now())
+  product        Product  @relation(fields: [productId], references: [id])
+  shop           Shop     @relation(fields: [shopId], references: [id])
+  user           User?    @relation(fields: [userId], references: [id])
+
+  @@map("inventory_logs")
+}
+
+model RestockHistory {
+  id          String   @id @default(cuid())
+  productId   String
+  quantity    Int
+  costPrice   Decimal? @db.Decimal(15, 2)
+  supplierId  String?
+  notes       String?
+  restockedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+  product     Product  @relation(fields: [productId], references: [id])
+
+  @@map("restock_history")
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String?
+  shopId    String?
+  type      NotificationType
+  title     String
+  message   String
+  data      Json?
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+  shop      Shop?            @relation(fields: [shopId], references: [id])
+  user      User?            @relation(fields: [userId], references: [id])
+
+  @@map("notifications")
+}
+
+model AuditLog {
+  id         String      @id @default(cuid())
+  userId     String
+  action     AuditAction
+  entityType String
+  entityId   String?
+  oldData    Json?
+  newData    Json?
+  ipAddress  String?
+  userAgent  String?
+  deviceInfo String?
+  createdAt  DateTime    @default(now())
+  user       User        @relation("AuditByUser", fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String
+  details   String?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@map("activity_logs")
+}
+
+model ClosingReport {
+  id            String   @id @default(cuid())
+  shopId        String
+  reportDate    DateTime
+  totalSales    Decimal  @db.Decimal(15, 2)
+  totalProfit   Decimal  @db.Decimal(15, 2)
+  totalExpenses Decimal  @db.Decimal(15, 2)
+  totalRefunds  Decimal  @db.Decimal(15, 2)
+  totalReturns  Int      @default(0)
+  totalDamages  Decimal  @db.Decimal(15, 2)
+  cashBalance   Decimal  @db.Decimal(15, 2)
+  salesCount    Int      @default(0)
+  data          Json?
+  createdAt     DateTime @default(now())
+  shop          Shop     @relation(fields: [shopId], references: [id])
+
+  @@unique([shopId, reportDate])
+  @@map("closing_reports")
+}
+
+model Currency {
+  id            String         @id @default(cuid())
+  code          String         @unique
+  name          String
+  symbol        String
+  isBase        Boolean        @default(false)
+  exchangeRates ExchangeRate[] @relation("BaseCurrency")
+  targetRates   ExchangeRate[] @relation("TargetCurrency")
+
+  @@map("currencies")
+}
+
+model ExchangeRate {
+  id               String   @id @default(cuid())
+  baseCurrencyId   String
+  targetCurrencyId String
+  rate             Decimal  @db.Decimal(15, 6)
+  fetchedAt        DateTime @default(now())
+  baseCurrency     Currency @relation("BaseCurrency", fields: [baseCurrencyId], references: [id])
+  targetCurrency   Currency @relation("TargetCurrency", fields: [targetCurrencyId], references: [id])
+
+  @@map("exchange_rates")
+}
+
+model AIInsight {
+  id          String    @id @default(cuid())
+  shopId      String?
+  type        String
+  title       String
+  description String
+  data        Json?
+  priority    String    @default("medium")
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime?
+  shop        Shop?     @relation(fields: [shopId], references: [id])
+
+  @@map("ai_insights")
+}
+
+model WhatsAppLog {
+  id         String    @id @default(cuid())
+  saleId     String?
+  phone      String
+  message    String?
+  receiptUrl String?
+  status     String    @default("pending")
+  response   Json?
+  sentAt     DateTime?
+  createdAt  DateTime  @default(now())
+  sale       Sale?     @relation(fields: [saleId], references: [id])
+
+  @@map("whatsapp_logs")
+}
+
+model Repair {
+  id             String        @id @default(cuid())
+  shopId         String
+  staffId        String
+  cashierId      String?
+  saleId         String?       @unique
+  orderCode      String        @unique
+  customerName   String
+  customerPhone  String?
+  deviceType     String
+  deviceModel    String?
+  issueDesc      String
+  repairNotes    String?
+  engineerName   String?
+  status         RepairStatus  @default(PENDING)
+  laborCost      Decimal       @default(0) @db.Decimal(15, 2)
+  totalPartsCost Decimal       @default(0) @db.Decimal(15, 2)
+  totalAmount    Decimal       @default(0) @db.Decimal(15, 2)
+  amountPaid     Decimal       @default(0) @db.Decimal(15, 2)
+  paymentMethod  PaymentMethod @default(CASH)
+  paymentStatus  PaymentStatus @default(PENDING)
+  confirmedAt    DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  partsUsed      RepairPart[]
+  cashier        User?         @relation("RepairCashier", fields: [cashierId], references: [id])
+  sale           Sale?         @relation(fields: [saleId], references: [id])
+  shop           Shop          @relation(fields: [shopId], references: [id])
+  staff          User          @relation("RepairByStaff", fields: [staffId], references: [id])
+
+  @@map("repairs")
+}
+
+model RepairPart {
+  id          String   @id @default(cuid())
+  repairId    String
+  productId   String?
+  name        String
+  quantity    Int      @default(1)
+  unitCost    Decimal  @db.Decimal(15, 2)
+  chargePrice Decimal  @default(0) @db.Decimal(15, 2)
+  totalCost   Decimal  @db.Decimal(15, 2)
+  shopName    String?
+  shopOwner   String?
+  product     Product? @relation(fields: [productId], references: [id])
+  repair      Repair   @relation(fields: [repairId], references: [id], onDelete: Cascade)
+
+  @@map("repair_parts")
+}
+
+enum UserRole {
+  ROOT_SUPER_ADMIN
+  SHOP_ADMIN
+  STAFF
+  CASHIER
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  INACTIVE
+}
+
+enum BuyerType {
+  ENGINEER
+  REGULAR_BUYER
+  WHOLESALER
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  POS_TERMINAL
+  MOBILE_MONEY
+  CREDIT_CARD
+  DEBIT_CARD
+  WALLET
+  SPLIT
+  CREDIT
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  PARTIAL
+  FAILED
+  REFUNDED
+}
+
+enum SaleStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  REFUNDED
+  PARTIAL_REFUND
+}
+
+enum RefundStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  COMPLETED
+}
+
+enum ReturnStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  RESTOCKED
+}
+
+enum ExpenseStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ShopStatus {
+  ACTIVE
+  SUSPENDED
+  INACTIVE
+}
+
+enum DamageType {
+  PHYSICAL
+  EXPIRED
+  DEFECTIVE
+  SUPPLIER_ISSUE
+  OTHER
+}
+
+enum NotificationType {
+  LOW_STOCK
+  SALE
+  REFUND
+  EXPENSE
+  DEBT
+  SYSTEM
+  ALERT
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  PASSWORD_RESET
+  ACCOUNT_SUSPEND
+  ACCOUNT_ACTIVATE
+  ROLE_ASSIGN
+  SHOP_ASSIGN
+}
+
+enum RepairStatus {
+  PENDING
+  IN_PROGRESS
+  WAITING_PARTS
+  READY
+  COMPLETED
+  CANCELLED
+}
